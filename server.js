@@ -71,7 +71,7 @@ function startServer() {
     // Pega o parâmetro da URL
     const searchTerm = req.params.searchTerm;
 
-      if (!searchTerm) return res.send("Termo de Busca Inválido");
+    if (!searchTerm) return res.send("Termo de Busca Inválido");
 
     // A query SQL fica segura e pré-definida aqui no servidor
     const query = `
@@ -229,17 +229,94 @@ ORDER BY c.NOME;`;
 
   //CADASTRAR PRODUTO SE NÂO HOUVER CADASTRO
 
-  //   app.post("/cadastro/produto", async (req, res) => {
+  app.post("/produto/cadastro", async (req, res) => {
+    try {
+      const produtoData = req.body;
+      const codigoProduto = produtoData.CODIGO;
 
-  //     // A query SQL fica segura e pré-definida aqui no servidor
-  //     const query = ``;
-  //     const params = [];
-  //     resultado = await FQuery(query, params);
-  //     res.json(resultado);
-  //     });
+      // Validação para garantir que o corpo da requisição não está vazio e tem o código
+      if (!codigoProduto) {
+        return res.status(400).json({
+          error: 'O campo "CODIGO" é obrigatório no corpo da requisição.',
+        });
+      }
+
+      // --- ETAPA 1: VERIFICAR SE O PRODUTO JÁ EXISTE ---
+      const queryVerificacao = "SELECT 1 FROM PRODUTOS WHERE CODIGO = ?";
+      const resultadoVerificacao = await FQuery(queryVerificacao, [
+        codigoProduto,
+      ]);
+
+      if (resultadoVerificacao.length > 0) {
+        return res.status(409).json({
+          error: `O produto com o código ${codigoProduto} já existe.`,
+        });
+      }
+      // ----------------------------------------------------
+
+      // --- ETAPA 2: SE NÃO EXISTIR, PROSSEGUIR COM O CADASTRO ---
+      // Garante que o estoque inicial seja 0, adicionando ou substituindo o campo
+      produtoData.ESTOQUEATUAL = 0;
+
+      // Pega os nomes das colunas (chaves do JSON)
+      const colunas = Object.keys(produtoData);
+      // Pega os valores correspondentes
+      const valores = Object.values(produtoData);
+
+      // Cria os placeholders (?) para a query dinamicamente
+      const placeholders = colunas.map(() => "?").join(", ");
+
+      // Monta a query de INSERT dinamicamente
+      const queryCadastro = `INSERT INTO PRODUTOS (${colunas.join(
+        ", "
+      )}) VALUES (${placeholders})`;
+
+      await FQuery(queryCadastro, valores);
+
+      res.status(201).json({
+        success: true,
+        message: `Produto ${codigoProduto} cadastrado com sucesso.`,
+      });
+    } catch (error) {
+      // O catch agora serve como uma segurança extra para outros tipos de erro
+      res
+        .status(error.status || 500)
+        .json({ error: error.message || "Erro interno do servidor." });
+    }
+  });
 
   ///////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////////
+
+  //BUSCAR POR PRODUTOS DETALHADOS
+
+  app.get("/produto/info/:searchTerm", async (req, res) => {
+    // Pega o parâmetro da URL
+    const searchTerm = req.params.searchTerm;
+
+    if (!searchTerm) return res.send("Termo de Busca Inválido");
+
+    // A query SQL fica segura e pré-definida aqui no servidor
+    const query = `
+          SELECT 
+            *
+          FROM PRODUTOS 
+          WHERE (UPPER(PRODUTO) CONTAINING UPPER(?) OR UPPER(CODIGO) CONTAINING UPPER(?))
+          ORDER BY PRODUTO
+        `;
+    const params = [searchTerm.toUpperCase(), searchTerm.toUpperCase()];
+    resultado = await FQuery(query, params);
+
+    if (resultado.length === 0)
+      return res
+        .status(404)
+        .json({ message: "Nenhum produto encontrado com o termo informado." });
+
+    res.json(resultado);
+  });
+
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////////
 
   app.listen(PORT, () => {
     console.log("Servidor Rodando");
