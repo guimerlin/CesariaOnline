@@ -1,0 +1,47 @@
+{
+  "name": "Pharmagno API",
+  "version": "1.0.0",
+  "description": "API to Fetch Local Database",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^37.3.1",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "node-firebird": "^1.1.9"
+  },
+  "build": {
+    "appId": "com.suaempresa.minhaapibackground",
+    "productName": "Minha API em Segundo Plano",
+    "files": [
+      "index.js",
+      "server.js",
+      "icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "icon.icns"
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": true
+    }
+  }
+}
