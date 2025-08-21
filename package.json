@@ -1,11 +1,13 @@
 {
-  "name": "Pharmagno API",
+  "name": "pharmagnoapi",
   "version": "1.0.0",
   "description": "API to Fetch Local Database",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "electron ."
+    "start": "electron .",
+    "publish": "electron-builder --publish always",
+    "build": "electron-builder"
   },
   "keywords": [],
   "author": "",
@@ -19,13 +21,14 @@
     "node-firebird": "^1.1.9"
   },
   "build": {
-    "appId": "com.suaempresa.minhaapibackground",
-    "productName": "Minha API em Segundo Plano",
+    "appId": "com.cesaria.cesariaonline",
+    "productName": "Cesária Online",
     "files": [
       "index.js",
       "server.js",
       "icon.png",
-      "package.json"
+      "package.json",
+      "icon.ico"
     ],
     "win": {
       "target": "nsis",
@@ -42,6 +45,13 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "runAfterFinish": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "guimerlin",
+      "repo": "cesariaonline",
+      "private": false,
+      "releaseType": "release"
     }
   }
 }
