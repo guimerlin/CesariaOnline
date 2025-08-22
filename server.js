@@ -141,7 +141,7 @@ function startServer(PORT) {
     const searchTerm = req.params.searchTerm;
     const password = req.params.password;
 
-    if (!password)
+    if (password !== PASSW)
       return res.status(401).json({
         error: "Senha Inválida",
         succes: false,
@@ -157,7 +157,7 @@ function startServer(PORT) {
   c.LIMITEDECOMPRA AS LIMITE,
   CAST(
     '{' || LIST(
-      '"' || pc.CODIGOVENDA || '": {" ||
+      '"' || pc.CODIGOVENDA || '": {' ||
         '"vencimento": "' || pc.VENCIMENTO || '", ' ||
         '"descricao": "' || pc.DESCRICAO || '", ' ||
         '"valor": ' || pc.VALOR || ', ' ||
@@ -168,8 +168,8 @@ function startServer(PORT) {
             SELECT '[' || LIST(
               CASE WHEN vcf2.CANCELAMENTO IS NULL THEN
                 '{"produto": "' || vcf2.PRODUTO || '", "valor_total": ' || vcf2.PRECOTOTAL || ', "codigo": "' || vcf2.CODIGOPRODUTO || '"}'
-              END, ', ')
-            || ']'
+              END, ', '
+            ) || ']'
             FROM VENDAS_CONVERTIDA_FP vcf2
             WHERE vcf2.VENDA = pc.CODIGOVENDA
             GROUP BY vcf2.VENDA
@@ -192,7 +192,7 @@ LEFT JOIN (
     GROUP BY pc2.CODIGOCLIENTE
 ) sc ON pc.CODIGOCLIENTE = sc.CODIGOCLIENTE
 LEFT JOIN CONVENIOS conv ON c.CONVENIOS = conv.CODIGO
-WHERE UPPER(c.NOME) CONTAINING UPPER(?) 
+WHERE UPPER(c.NOME) CONTAINING UPPER(?)
   AND pc.VALORRESTANTE <> 0.00
 GROUP BY
   pc.CODIGOCLIENTE,
