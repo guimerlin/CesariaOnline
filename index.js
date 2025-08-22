@@ -40,7 +40,7 @@ app.whenReady().then(() => {
   createTray(); // Cria o ícone da bandeja
 
   // Inicia o servidor da API Node.js
-  startServer();
+  startServer(3000);
 
   // Configura a aplicação para iniciar com o sistema operacional
   // Isso funciona para Windows e macOS.

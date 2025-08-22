@@ -1,13 +1,15 @@
 const express = require("express");
 const Firebird = require("node-firebird");
+const path = require("path");
 const app = express();
+const PASSW = "238702";
 
-// Adiciona o middleware para interpretar o corpo da requisição como JSON
 app.use(express.json());
 
-// --- CONFIGURAÇÕES DO BANCO DE DADOS FIREBIRD ---
-// ATENÇÃO: Preencha com as suas informações de conexão.
-// É uma boa prática usar variáveis de ambiente para dados sensíveis.
+/*
+* CREDENCIAIS DO BANCO DE DADOS FIREBIRD
+*/
+
 const firebirdOptions = {
   host: "localhost",
   port: 3050,
@@ -18,7 +20,14 @@ const firebirdOptions = {
   role: null, // Opcional
   pageSize: 4096, // Opcional
 };
+
 // -------------------------------------------------
+
+/*
+* FUNÇÃO GLOBAL PARA REALIZAR A QUERY SQL NO BANCO DE DADOS, A
+* FUNÇÃO FILTRA RESULTADOS QUE RETORNAM STREAMS PARA QUE A QUERY
+* FUNCIONE CORRETAMENTE
+*/
 
 function FQuery(sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -47,33 +56,56 @@ function FQuery(sql, params = []) {
   });
 }
 
-function startServer() {
-  const PORT = 3000; // Você pode tornar isso configurável
+/*
+* INICIAR O SERVIDOR UTILIZANDO A FUNÇÃO STARTSERVER
+*/
 
-  // Endpoint original
+function startServer(PORT) {
+
   app.get("/", (req, res) => {
-    res.send("Nada");
+    res.sendFile(path.join(__dirname, "index.html"));
   });
 
-  // Endpoint original
-  app.get("/status", (req, res) => {
-    res.json({
-      status: "online",
-      uptime: process.uptime(),
-    });
+  app.get("/icon.ico", (req, res) => {
+    res.sendFile(path.join(__dirname, "icon.ico"));
   });
+  
+  /*
+  BUSCA DETALHADA POR PRODUTOS POR CODIGO OU NOME
+  */
 
-  //////////////////////////////////////////////////////////////////
-
-  //BUSCAR POR PRODUTOS
-
-  app.get("/produto/:searchTerm", async (req, res) => {
-    // Pega o parâmetro da URL
+  app.get("/produto/info/:searchTerm", async (req, res) => {
     const searchTerm = req.params.searchTerm;
 
     if (!searchTerm) return res.send("Termo de Busca Inválido");
 
-    // A query SQL fica segura e pré-definida aqui no servidor
+    const query = `
+          SELECT 
+            *
+          FROM PRODUTOS 
+          WHERE (UPPER(PRODUTO) CONTAINING UPPER(?) OR UPPER(CODIGO) CONTAINING UPPER(?))
+          ORDER BY PRODUTO
+        `;
+    const params = [searchTerm.toUpperCase(), searchTerm.toUpperCase()];
+
+    resultado = await FQuery(query, params);
+
+    if (resultado.length === 0) return res.status(404);
+
+    res.json(resultado);
+  });
+
+  //--------------------------------------------------------------------
+
+  /*
+  BUSCA SIMPLES POR PRODUTOS COM ESTOQUE MAIOR QUE 0
+  */
+
+  app.get("/produto/:searchTerm", async (req, res) => {
+    const searchTerm = req.params.searchTerm;
+
+    if (!searchTerm) return res.send("Termo de Busca Inválido");
+
     const query = `
           SELECT 
             CODIGO,
@@ -98,16 +130,24 @@ function startServer() {
     res.json(resultado);
   });
 
-  ///////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////////
+  //----------------------------------------------------------------------
 
-  //BUSCAR POR CONVENIO
+  /*
+  BUSCA POR SALDO E DIVIDA DE CLIENTES QUE TEM DEBITOS PENDENTES
+  NO BANCO DE DADOS DA LOJA.
+  */
 
-  app.get("/convenio/:searchTerm", async (req, res) => {
-    // Pega o parâmetro da URL
+  app.get("/convenio/:searchTerm/:password", async (req, res) => {
     const searchTerm = req.params.searchTerm;
+    const password = req.params.password;
 
-    // A query SQL fica segura e pré-definida aqui no servidor
+    if (!password)
+      return res.status(401).json({
+        error: "Senha Inválida",
+        succes: false,
+        message: "Senha Inválida",
+      });
+
     const query = `SELECT
   c.NOME,
   c.CIC AS DOCUMENTO,
@@ -117,7 +157,7 @@ function startServer() {
   c.LIMITEDECOMPRA AS LIMITE,
   CAST(
     '{' || LIST(
-      '"' || pc.CODIGOVENDA || '": {' ||
+      '"' || pc.CODIGOVENDA || '": {" ||
         '"vencimento": "' || pc.VENCIMENTO || '", ' ||
         '"descricao": "' || pc.DESCRICAO || '", ' ||
         '"valor": ' || pc.VALOR || ', ' ||
@@ -128,8 +168,8 @@ function startServer() {
             SELECT '[' || LIST(
               CASE WHEN vcf2.CANCELAMENTO IS NULL THEN
                 '{"produto": "' || vcf2.PRODUTO || '", "valor_total": ' || vcf2.PRECOTOTAL || ', "codigo": "' || vcf2.CODIGOPRODUTO || '"}'
-              END, ', '
-            ) || ']'
+              END, ', ')
+            || ']'
             FROM VENDAS_CONVERTIDA_FP vcf2
             WHERE vcf2.VENDA = pc.CODIGOVENDA
             GROUP BY vcf2.VENDA
@@ -152,7 +192,7 @@ LEFT JOIN (
     GROUP BY pc2.CODIGOCLIENTE
 ) sc ON pc.CODIGOCLIENTE = sc.CODIGOCLIENTE
 LEFT JOIN CONVENIOS conv ON c.CONVENIOS = conv.CODIGO
-WHERE UPPER(c.NOME) CONTAINING UPPER(?)
+WHERE UPPER(c.NOME) CONTAINING UPPER(?) 
   AND pc.VALORRESTANTE <> 0.00
 GROUP BY
   pc.CODIGOCLIENTE,
@@ -177,71 +217,113 @@ ORDER BY c.NOME;`;
     res.json(resultado);
   });
 
-  ///////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////////
+  // -------------------------------------------------------------------------
 
-  //
+  /*
 
-  app.get("/update/produto/:codigo/:quantidade/:senha", async (req, res) => {
-    // Pega o parâmetro da URL
-    const codigo = req.params.codigo;
-    const quantidade = req.params.quantidade;
-    const senha = req.params.senha;
+  ENDPOINT PARA ATUALIZAÇÃO DE QUANTIDADE DE UM PRODUTO EM ESTOQUE.
 
-    if (senha !== "2444666668888888") return res.send("Senha Inválida");
+  IMPORTANTE: ESTE ENDPOINT NÃO REALIZA O CADASTRO DO PRODUTO, CASO
+  O PRODUTO NÃO TENHA CADASTRO, ELE DEVE SER REALIZADO NO ENDPOINT
+  DE CADASTRO DE PRODUTOS COM AS ESPECIFICAÇÕES COMPLETAS DO PRODUTO.
 
-    const query = `EXECUTE PROCEDURE PROC_ALTERAESTOQUE (?, ?, ?, ?, NULL)`;
-    const params = [codigo, quantidade, 1, "CesariaApp"];
-    resultado = await FQuery(query, params);
-    res.json(resultado);
+  */
+
+  app.post("/update/produto", async (req, res) => {
+    try {
+      /*
+      PEGA O CORPO DA REQUISIÇÃO
+      */
+
+      const ProductData = req.body;
+      const codigoProduto = ProductData.BARCODE;
+      const quantity = ProductData.QUANTITY;
+      const senha = ProductData.PASSWORD;
+      const userCode = ProductData.USERCODE;
+
+      /*
+      VALIDAR CORPO DA REQUISIÇÃO
+      */
+
+      if (!userCode) return res.status(400);
+      if (!senha) return res.status(400);
+      if (!codigoProduto) return res.status(400);
+      if (!quantity) return res.status(400);
+
+      /*
+      VERIFICAR CREDENCIAIS DO UTILIZADOR
+      */
+
+      if (senha !== PASSW) return res.status(401);
+
+      /*
+      VERIFICAR SE O PRODUTO JÁ EXISTE NO ESTOQUE DA LOJA
+      */
+
+      const sql = "SELECT ESTOQUEATUAL FROM PRODUTOS WHERE CODIGO = ?";
+      const Result = await FQuery(sql, [codigoProduto]);
+
+      if (Result[0].ESTOQUEATUAL === quantity) return res.status(409);
+
+      /*
+      VERIFICAR SE A QUANTIDADE INFORMADA JÁ ESTÁ NO ESTOQUE ANTES DE INSERIR AS MODIFICAÇÕES NO SISTEMA DA LOJA.
+      */
+
+      if (Result.length === 0) return res.status(404);
+
+      /*
+      REALIZAR A ATUALIZAÇÃO DO ESTOQUE
+      */
+
+      const query = `EXECUTE PROCEDURE PROC_ALTERAESTOQUE (?, ?, ?, ?, NULL)`;
+      const params = [codigoProduto, quantity, 1, `CesariaApp`];
+      resultado = await FQuery(query, params);
+      res.status(200);
+    } catch (error) {
+      // O catch agora serve como uma segurança extra para outros tipos de erro
+      res.status(error.status || 500);
+    }
   });
 
-  ///////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////////
+  //------------------------------------------------------------------------
 
-  //VERIFICAR CADASTRO DE PRODUTO
-
-  app.get("/verify/produto/:codigo", async (req, res) => {
-    // Pega o parâmetro da URL
-    const codigo = req.params.codigo;
-
-    if (!codigo) return res.send("Código Inválido");
-
-    const query = `
-          SELECT 
-            PRODUTO
-          FROM PRODUTOS 
-          WHERE UPPER(CODIGO) = UPPER(?)
-        `;
-    const params = [codigo];
-    resultado = await FQuery(query, params);
-
-    if (resultado.length === 0)
-      return res
-        .status(404)
-        .json({ message: "Nenhum produto encontrado com o código informado." });
-
-    res.json(resultado);
-  });
-
-  ///////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////////
-
-  //CADASTRAR PRODUTO SE NÂO HOUVER CADASTRO
+  /*
+  * ENDPOINT PARA CADASTRO DE PRODUTOS CASO NÃO HAJA
+  */
 
   app.post("/produto/cadastro", async (req, res) => {
     try {
+      /*
+      PEGA O CORPO DA REQUISIÇÃO
+      */
+
       const produtoData = req.body;
       const codigoProduto = produtoData.CODIGO;
+      const senha = produtoData.PASSWORD;
+      const userCode = produtoData.USERCODE;
 
-      // Validação para garantir que o corpo da requisição não está vazio e tem o código
+      /*
+      VALIDAR CORPO DA REQUISIÇÃO
+      */
+
+      if (!userCode) return res.status(400);
+      if (!senha) return res.status(400);
       if (!codigoProduto) {
         return res.status(400).json({
           error: 'O campo "CODIGO" é obrigatório no corpo da requisição.',
         });
       }
 
-      // --- ETAPA 1: VERIFICAR SE O PRODUTO JÁ EXISTE ---
+      /*
+      VERIFICAR CREDENCIAIS DO UTILIZADOR
+      */
+
+      if (senha !== PASSW) return res.status(401);
+
+      /*
+      VERIFICAR SE O PRODUTO JÁ TEM CADASTRO
+      */
+
       const queryVerificacao = "SELECT 1 FROM PRODUTOS WHERE CODIGO = ?";
       const resultadoVerificacao = await FQuery(queryVerificacao, [
         codigoProduto,
@@ -252,21 +334,18 @@ ORDER BY c.NOME;`;
           error: `O produto com o código ${codigoProduto} já existe.`,
         });
       }
-      // ----------------------------------------------------
 
-      // --- ETAPA 2: SE NÃO EXISTIR, PROSSEGUIR COM O CADASTRO ---
-      // Garante que o estoque inicial seja 0, adicionando ou substituindo o campo
+      /*
+      SE NÃO EXISTIR, PROSSEGUIR COM O CADASTRO
+      */
+
       produtoData.ESTOQUEATUAL = 0;
 
-      // Pega os nomes das colunas (chaves do JSON)
       const colunas = Object.keys(produtoData);
-      // Pega os valores correspondentes
       const valores = Object.values(produtoData);
 
-      // Cria os placeholders (?) para a query dinamicamente
       const placeholders = colunas.map(() => "?").join(", ");
 
-      // Monta a query de INSERT dinamicamente
       const queryCadastro = `INSERT INTO PRODUTOS (${colunas.join(
         ", "
       )}) VALUES (${placeholders})`;
@@ -278,45 +357,17 @@ ORDER BY c.NOME;`;
         message: `Produto ${codigoProduto} cadastrado com sucesso.`,
       });
     } catch (error) {
-      // O catch agora serve como uma segurança extra para outros tipos de erro
       res
         .status(error.status || 500)
         .json({ error: error.message || "Erro interno do servidor." });
     }
   });
 
-  ///////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////////
+  //----------------------------------------------------------------------
 
-  //BUSCAR POR PRODUTOS DETALHADOS
-
-  app.get("/produto/info/:searchTerm", async (req, res) => {
-    // Pega o parâmetro da URL
-    const searchTerm = req.params.searchTerm;
-
-    if (!searchTerm) return res.send("Termo de Busca Inválido");
-
-    // A query SQL fica segura e pré-definida aqui no servidor
-    const query = `
-          SELECT 
-            *
-          FROM PRODUTOS 
-          WHERE (UPPER(PRODUTO) CONTAINING UPPER(?) OR UPPER(CODIGO) CONTAINING UPPER(?))
-          ORDER BY PRODUTO
-        `;
-    const params = [searchTerm.toUpperCase(), searchTerm.toUpperCase()];
-    resultado = await FQuery(query, params);
-
-    if (resultado.length === 0)
-      return res
-        .status(404)
-        .json({ message: "Nenhum produto encontrado com o termo informado." });
-
-    res.json(resultado);
-  });
-
-  ///////////////////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  /*
+  INICIA A ESCUTA DO SERVIDOR NA PORTA DEFINIDA
+  */
 
   app.listen(PORT, () => {
     console.log("Servidor Rodando");

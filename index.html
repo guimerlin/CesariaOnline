@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Frontend</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        .endpoint { border: 1px solid #ccc; padding: 1em; margin-bottom: 1em; border-radius: 5px; }
+        .endpoint h2 { margin-top: 0; }
+        input, button { padding: 0.5em; margin-right: 0.5em; }
+        pre { background-color: #f4f4f4; padding: 1em; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>API Frontend</h1>
+
+    <div class="endpoint">
+        <h2>Busca Detalhada de Produtos</h2>
+        <form id="info-form">
+            <input type="text" id="info-search" placeholder="Código ou Nome do Produto" required>
+            <button type="submit">Buscar</button>
+        </form>
+    </div>
+
+    <div class="endpoint">
+        <h2>Busca Simples de Produtos (Estoque > 0)</h2>
+        <form id="simple-search-form">
+            <input type="text" id="simple-search" placeholder="Código ou Nome do Produto" required>
+            <button type="submit">Buscar</button>
+        </form>
+    </div>
+
+    <div class="endpoint">
+        <h2>Consulta de Convênio</h2>
+        <form id="convenio-form">
+            <input type="text" id="convenio-search" placeholder="Nome do Cliente" required>
+            <input type="password" id="convenio-password" placeholder="Senha" required>
+            <button type="submit">Consultar</button>
+        </form>
+    </div>
+
+    <div class="endpoint">
+        <h2>Atualizar Estoque de Produto</h2>
+        <form id="update-stock-form">
+            <input type="text" id="update-barcode" placeholder="Código de Barras" required>
+            <input type="number" id="update-quantity" placeholder="Nova Quantidade" required>
+            <input type="password" id="update-password" placeholder="Senha" required>
+            <input type="text" id="update-usercode" placeholder="Código de Usuário" required>
+            <button type="submit">Atualizar</button>
+        </form>
+    </div>
+
+    <div class="endpoint">
+        <h2>Cadastrar Novo Produto</h2>
+        <form id="create-product-form">
+            <textarea id="product-data" placeholder='''{"CODIGO": "123", "PRODUTO": "PRODUTO NOVO", "PRECOVENDA": 10.50, "PASSWORD": "...", "USERCODE": "..."}''' required rows="6" cols="50"></textarea>
+            <button type="submit">Cadastrar</button>
+        </form>
+    </div>
+
+    <h2>Resultados</h2>
+    <pre id="results"></pre>
+
+    <script>
+        const resultsContainer = document.getElementById('results');
+
+        document.getElementById('info-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const searchTerm = document.getElementById('info-search').value;
+            const response = await fetch(`/produto/info/${searchTerm}`);
+            const data = await response.json();
+            resultsContainer.textContent = JSON.stringify(data, null, 2);
+        });
+
+        document.getElementById('simple-search-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const searchTerm = document.getElementById('simple-search').value;
+            const response = await fetch(`/produto/${searchTerm}`);
+            const data = await response.json();
+            resultsContainer.textContent = JSON.stringify(data, null, 2);
+        });
+
+        document.getElementById('convenio-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const searchTerm = document.getElementById('convenio-search').value;
+            const password = document.getElementById('convenio-password').value;
+            const response = await fetch(`/convenio/${searchTerm}/${password}`);
+            const data = await response.json();
+            resultsContainer.textContent = JSON.stringify(data, null, 2);
+        });
+
+        document.getElementById('update-stock-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const BARCODE = document.getElementById('update-barcode').value;
+            const QUANTITY = parseInt(document.getElementById('update-quantity').value);
+            const PASSWORD = document.getElementById('update-password').value;
+            const USERCODE = document.getElementById('update-usercode').value;
+
+            const response = await fetch('/update/produto', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ BARCODE, QUANTITY, PASSWORD, USERCODE })
+            });
+            resultsContainer.textContent = `Status: ${response.status}`;
+        });
+
+        document.getElementById('create-product-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const productData = document.getElementById('product-data').value;
+            try {
+                const parsedData = JSON.parse(productData);
+                const response = await fetch('/produto/cadastro', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(parsedData)
+                });
+                const data = await response.json();
+                resultsContainer.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultsContainer.textContent = `Erro no JSON: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>
